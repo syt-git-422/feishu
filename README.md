@@ -1,4 +1,6 @@
-# skill-codex
+# feishu
+
+飞书相关功能。
 
 后续 Claude Code 技能统一放在用户级 Claude 配置目录：
 
