@@ -120,6 +120,76 @@ def patch_record(token: str, app_token: str, table_id: str, record_id: str, fiel
     return result
 
 
+def get_wiki_node(token: str, wiki_node_token: str):
+    query = urllib.parse.urlencode({"token": wiki_node_token})
+    url = f"{OPEN_FEISHU_BASE_URL}/wiki/v2/spaces/get_node?{query}"
+    result = http_json("GET", url, headers=feishu_headers(token))
+    if result.get("code") != 0:
+        raise RuntimeError(f"Failed to get wiki node: {result}")
+    node = ((result.get("data") or {}).get("node") or {})
+    obj_token = node.get("obj_token")
+    obj_type = node.get("obj_type")
+    if not obj_token or not obj_type:
+        raise RuntimeError(f"Wiki node response missing obj_token/obj_type: {result}")
+    return obj_token, obj_type
+
+
+def query_sheets(token: str, spreadsheet_token: str):
+    url = (
+        f"{OPEN_FEISHU_BASE_URL}/sheets/v3/spreadsheets/"
+        f"{urllib.parse.quote(spreadsheet_token)}/sheets/query"
+    )
+    result = http_json("GET", url, headers=feishu_headers(token))
+    if result.get("code") != 0:
+        raise RuntimeError(f"Failed to query sheets: {result}")
+    return ((result.get("data") or {}).get("sheets") or [])
+
+
+def select_sheet_id(sheets):
+    expected_title = os.environ.get("TODO_SHEET_TITLE")
+    visible_sheets = [sheet for sheet in sheets if not sheet.get("hidden")]
+    if expected_title:
+        for sheet in visible_sheets:
+            if sheet.get("title") == expected_title:
+                return sheet["sheet_id"]
+        raise RuntimeError(f"Sheet title {expected_title!r} not found")
+    if not visible_sheets:
+        raise RuntimeError("No visible sheets found")
+    return sorted(visible_sheets, key=lambda item: item.get("index", 0))[0]["sheet_id"]
+
+
+def read_sheet_values(token: str, spreadsheet_token: str, sheet_id: str):
+    range_suffix = os.environ.get("TODO_SHEET_RANGE", "A1:M500")
+    read_range = f"{sheet_id}!{range_suffix}"
+    url = (
+        f"{OPEN_FEISHU_BASE_URL}/sheets/v2/spreadsheets/"
+        f"{urllib.parse.quote(spreadsheet_token)}/values/{urllib.parse.quote(read_range, safe='')}"
+        "?valueRenderOption=FormattedValue&dateTimeRenderOption=FormattedString"
+    )
+    result = http_json("GET", url, headers=feishu_headers(token))
+    if result.get("code") != 0:
+        raise RuntimeError(f"Failed to read sheet values: {result}")
+    value_range = ((result.get("data") or {}).get("valueRange") or {})
+    return value_range.get("values") or []
+
+
+def write_sheet_cell(token: str, spreadsheet_token: str, sheet_id: str, cell: str, value):
+    write_range = f"{sheet_id}!{cell}:{cell}"
+    url = (
+        f"{OPEN_FEISHU_BASE_URL}/sheets/v2/spreadsheets/"
+        f"{urllib.parse.quote(spreadsheet_token)}/values"
+    )
+    result = http_json(
+        "PUT",
+        url,
+        headers=feishu_headers(token),
+        payload={"valueRange": {"range": write_range, "values": [[value]]}},
+    )
+    if result.get("code") != 0:
+        raise RuntimeError(f"Failed to write sheet cell {cell}: {result}")
+    return result
+
+
 def send_webhook(text: str):
     webhook = env_required("TODO_FEISHU_WEBHOOK_URL")
     payload = {"msg_type": "text", "content": {"text": text}}
@@ -198,6 +268,14 @@ def is_done(value) -> bool:
     return option_value(value) in {"已完成", "完成", "done", "Done", "DONE"}
 
 
+def column_letter(index: int) -> str:
+    letters = ""
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters
+
+
 def build_message(fields: dict, current: dt.datetime) -> str:
     task_id = text_value(fields.get(os.environ.get("TODO_FIELD_TASK_ID", "任务ID")))
     item = text_value(fields.get(os.environ.get("TODO_FIELD_TITLE", "待办事项")))
@@ -241,18 +319,43 @@ def due_records(records, current: dt.datetime):
         yield record, reminder_time
 
 
-def run_once() -> int:
-    current = now_local()
-    app_token = env_required("TODO_BITABLE_APP_TOKEN")
-    table_id = env_required("TODO_BITABLE_TABLE_ID")
+def bitable_due_records(records, current: dt.datetime):
+    yield from due_records(records, current)
+
+
+def sheet_records(values):
+    header_row = env_int("TODO_SHEET_HEADER_ROW", 2)
+    if header_row < 1:
+        raise RuntimeError("TODO_SHEET_HEADER_ROW must be at least 1")
+    if len(values) < header_row:
+        raise RuntimeError(f"Sheet has fewer than {header_row} rows")
+
+    headers = [text_value(cell) for cell in values[header_row - 1]]
+    header_positions = {header: index + 1 for index, header in enumerate(headers) if header}
+    first_data_row = env_int("TODO_SHEET_FIRST_DATA_ROW", header_row + 1)
+
+    for offset, row in enumerate(values[first_data_row - 1 :], start=first_data_row):
+        fields = {}
+        if not any(text_value(cell) for cell in row):
+            continue
+        for index, header in enumerate(headers):
+            if header:
+                fields[header] = row[index] if index < len(row) else ""
+        yield {"row_number": offset, "fields": fields, "header_positions": header_positions}
+
+
+def sheet_due_records(records, current: dt.datetime):
+    yield from due_records(records, current)
+
+
+def run_bitable_once(token: str, current: dt.datetime, app_token: str, table_id: str) -> int:
     field_last = os.environ.get("TODO_FIELD_LAST_FOLLOW", "最后跟进日期")
     field_ai_status = os.environ.get("TODO_FIELD_AI_STATUS", "AI处理状态")
     update_ai_status = os.environ.get("TODO_UPDATE_AI_STATUS", "1") not in {"0", "false", "False"}
 
-    token = tenant_access_token()
     records = list_records(token, app_token, table_id)
     count = 0
-    for record, reminder_time in due_records(records, current):
+    for record, reminder_time in bitable_due_records(records, current):
         fields = record.get("fields") or {}
         message = build_message(fields, current)
         send_webhook(message)
@@ -268,6 +371,61 @@ def run_once() -> int:
         )
     print(f"checked {len(records)} records, sent {count} reminders", flush=True)
     return count
+
+
+def run_sheet_once(token: str, current: dt.datetime, spreadsheet_token: str) -> int:
+    field_last = os.environ.get("TODO_FIELD_LAST_FOLLOW", "最后跟进日期")
+    field_ai_status = os.environ.get("TODO_FIELD_AI_STATUS", "AI处理状态")
+    update_ai_status = os.environ.get("TODO_UPDATE_AI_STATUS", "1") not in {"0", "false", "False"}
+
+    sheets = query_sheets(token, spreadsheet_token)
+    sheet_id = select_sheet_id(sheets)
+    values = read_sheet_values(token, spreadsheet_token, sheet_id)
+    records = list(sheet_records(values))
+    count = 0
+    for record, reminder_time in sheet_due_records(records, current):
+        fields = record.get("fields") or {}
+        header_positions = record.get("header_positions") or {}
+        row_number = record["row_number"]
+        message = build_message(fields, current)
+        send_webhook(message)
+
+        if field_last in header_positions:
+            cell = f"{column_letter(header_positions[field_last])}{row_number}"
+            write_sheet_cell(token, spreadsheet_token, sheet_id, cell, current.strftime("%Y-%m-%d"))
+        if update_ai_status and field_ai_status in header_positions:
+            cell = f"{column_letter(header_positions[field_ai_status])}{row_number}"
+            write_sheet_cell(token, spreadsheet_token, sheet_id, cell, "已提醒")
+        count += 1
+        print(
+            f"sent reminder row={row_number} reminder_time={reminder_time.isoformat()}",
+            flush=True,
+        )
+    print(f"checked {len(records)} sheet rows, sent {count} reminders", flush=True)
+    return count
+
+
+def run_once() -> int:
+    current = now_local()
+    token = tenant_access_token()
+
+    wiki_node_token = os.environ.get("TODO_WIKI_NODE_TOKEN")
+    if wiki_node_token:
+        obj_token, obj_type = get_wiki_node(token, wiki_node_token)
+        if obj_type == "sheet":
+            return run_sheet_once(token, current, obj_token)
+        if obj_type == "bitable":
+            table_id = env_required("TODO_BITABLE_TABLE_ID")
+            return run_bitable_once(token, current, obj_token, table_id)
+        raise RuntimeError(f"Unsupported wiki obj_type: {obj_type}")
+
+    spreadsheet_token = os.environ.get("TODO_SPREADSHEET_TOKEN")
+    if spreadsheet_token:
+        return run_sheet_once(token, current, spreadsheet_token)
+
+    app_token = env_required("TODO_BITABLE_APP_TOKEN")
+    table_id = env_required("TODO_BITABLE_TABLE_ID")
+    return run_bitable_once(token, current, app_token, table_id)
 
 
 def main() -> int:

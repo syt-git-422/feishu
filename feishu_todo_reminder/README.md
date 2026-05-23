@@ -1,6 +1,6 @@
 # 飞书待办提醒部署说明
 
-这套 Worker 会读取飞书多维表格待办清单，并执行补发逻辑：
+这套 Worker 会读取飞书待办清单，并执行补发逻辑：
 
 - `提醒开关 = 开启`
 - `完成情况 != 已完成`
@@ -11,7 +11,12 @@
 
 ## 一、飞书表格要求
 
-当前脚本按飞书多维表格 API 读取。表格字段默认使用这些列名：
+当前脚本支持两种存放方式：
+
+- 飞书知识库里的电子表格，也就是链接里包含 `/wiki/`，页面里是表格。
+- 飞书多维表格，也就是链接里包含 `/base/`。
+
+表格字段默认使用这些列名：
 
 ```text
 任务ID
@@ -44,11 +49,23 @@ FEISHU_APP_ID
 FEISHU_APP_SECRET
 ```
 
-并确认应用拥有多维表格读取/写入权限。常用权限包括读取和更新多维表格记录，实际名称以飞书后台显示为准。
+并确认应用拥有云文档/电子表格或多维表格的读取、写入权限。实际权限名称以飞书后台显示为准。
 
-### 2. 多维表格 app_token 和 table_id
+### 2. 待办清单文档 token
 
-打开待办清单所在的多维表格，浏览器地址通常包含类似：
+如果你的链接是知识库 wiki 链接，例如：
+
+```text
+https://zcnr40mxkvh6.feishu.cn/wiki/YnzgwaDVci7bASkaf7Zc2E0rnTe
+```
+
+取出 `/wiki/` 后面的这一段：
+
+```text
+TODO_WIKI_NODE_TOKEN=YnzgwaDVci7bASkaf7Zc2E0rnTe
+```
+
+如果你的链接是多维表格链接，例如：
 
 ```text
 https://xxx.feishu.cn/base/<app_token>?table=<table_id>
@@ -61,7 +78,7 @@ TODO_BITABLE_APP_TOKEN=<app_token>
 TODO_BITABLE_TABLE_ID=<table_id>
 ```
 
-如果你的链接不是这个格式，把链接发给 Codex，我可以帮你判断 token 在哪里。
+两种方式选一种即可。当前推荐先用 `TODO_WIKI_NODE_TOKEN`。
 
 ### 3. 飞书群机器人 webhook
 
@@ -100,8 +117,7 @@ Settings -> Secrets and variables -> Actions -> New repository secret
 ```text
 FEISHU_APP_ID=cli_xxx
 FEISHU_APP_SECRET=xxx
-TODO_BITABLE_APP_TOKEN=xxx
-TODO_BITABLE_TABLE_ID=xxx
+TODO_WIKI_NODE_TOKEN=xxx
 TODO_FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
 ```
 
@@ -155,8 +171,7 @@ python3 feishu_todo_reminder/scripts/feishu_todo_reminder.py
 ```text
 FEISHU_APP_ID=cli_xxx
 FEISHU_APP_SECRET=xxx
-TODO_BITABLE_APP_TOKEN=xxx
-TODO_BITABLE_TABLE_ID=xxx
+TODO_WIKI_NODE_TOKEN=xxx
 TODO_FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
 TODO_FEISHU_WEBHOOK_SECRET=xxx
 TODO_TIMEZONE=Asia/Shanghai
