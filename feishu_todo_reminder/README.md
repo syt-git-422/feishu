@@ -1,13 +1,13 @@
-# 飞书待办提醒云端部署说明
+# 飞书待办提醒部署说明
 
-这套 Worker 适合部署到 Railway、VPS 等长期在线环境。它会循环读取飞书多维表格待办清单，并执行补发逻辑：
+这套 Worker 会读取飞书多维表格待办清单，并执行补发逻辑：
 
 - `提醒开关 = 开启`
 - `完成情况 != 已完成`
 - `下次提醒时间 <= 当前时间`
 - `最后跟进日期` 不是今天
 
-满足以上条件时，Worker 会发送飞书提醒，并把 `最后跟进日期` 写成今天。这样即使服务重启、短暂离线，恢复后也会补发已过期但今天未提醒过的任务。
+满足以上条件时，Worker 会发送飞书提醒，并把 `最后跟进日期` 写成今天。这样即使某次检查延迟或失败，下一次恢复后也会补发已过期但今天未提醒过的任务。
 
 ## 一、飞书表格要求
 
@@ -26,7 +26,7 @@
 AI处理状态
 ```
 
-如果你的列名不一样，可以在 Railway 环境变量里覆盖，例如：
+如果你的列名不一样，可以用环境变量覆盖，例如：
 
 ```text
 TODO_FIELD_NEXT_REMINDER=下次提醒时间
@@ -77,7 +77,68 @@ TODO_FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
 TODO_FEISHU_WEBHOOK_SECRET=xxx
 ```
 
-## 三、Railway 部署步骤
+## 三、GitHub Actions 免费定时运行
+
+仓库里已经提供工作流：
+
+```text
+.github/workflows/feishu-todo-reminder.yml
+```
+
+默认每 10 分钟检查一次，也支持在 GitHub 页面手动运行。
+
+### 1. 配置 Secrets
+
+打开 GitHub 仓库：
+
+```text
+Settings -> Secrets and variables -> Actions -> New repository secret
+```
+
+逐个添加：
+
+```text
+FEISHU_APP_ID=cli_xxx
+FEISHU_APP_SECRET=xxx
+TODO_BITABLE_APP_TOKEN=xxx
+TODO_BITABLE_TABLE_ID=xxx
+TODO_FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
+```
+
+如果群机器人开启了签名校验，再添加：
+
+```text
+TODO_FEISHU_WEBHOOK_SECRET=xxx
+```
+
+### 2. 手动测试
+
+打开 GitHub 仓库：
+
+```text
+Actions -> Feishu Todo Reminder -> Run workflow
+```
+
+点运行后进入本次执行记录，看到类似下面内容说明检查成功：
+
+```text
+checked 6 records, sent 0 reminders
+```
+
+如果存在已到提醒时间且今天未跟进的待办，会显示：
+
+```text
+sent reminder record_id=xxx reminder_time=...
+checked 6 records, sent 1 reminders
+```
+
+### 3. 延迟说明
+
+GitHub Actions 定时任务不是严格准点，可能延迟几分钟。你的提醒逻辑按 `下次提醒时间 <= 当前时间` 判断，所以延迟不会漏提醒，只会晚一点发送。
+
+## 四、Railway 部署步骤
+
+如果以后你希望更稳定地常驻运行，可以再部署 Railway。
 
 1. 把这个仓库推送到 GitHub。
 2. 打开 Railway，创建 New Project。
@@ -111,7 +172,7 @@ TODO_POLL_INTERVAL_SECONDS=300
 checked 6 records, sent 0 reminders
 ```
 
-## 四、建议的字段行为
+## 五、建议的字段行为
 
 `下次提醒时间` 可以设置成过去时间。只要当天还没有写入 `最后跟进日期`，Worker 会补发。
 
@@ -123,7 +184,7 @@ checked 6 records, sent 0 reminders
 TODO_UPDATE_AI_STATUS=0
 ```
 
-## 五、本地测试
+## 六、本地测试
 
 本地临时设置环境变量后，可以运行一次检查：
 

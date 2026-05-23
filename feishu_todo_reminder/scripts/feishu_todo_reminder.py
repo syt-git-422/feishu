@@ -270,7 +270,7 @@ def run_once() -> int:
     return count
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--once", action="store_true", help="Run one polling pass and exit.")
     args = parser.parse_args()
@@ -284,10 +284,12 @@ def main():
             run_once()
         except Exception as exc:
             print(f"[error] {exc}", file=sys.stderr, flush=True)
+            if args.once:
+                return 1
         if args.once:
-            return
+            return 0
         time.sleep(interval)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

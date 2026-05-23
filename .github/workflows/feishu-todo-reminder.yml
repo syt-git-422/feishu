@@ -1,0 +1,36 @@
+name: Feishu Todo Reminder
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: feishu-todo-reminder
+  cancel-in-progress: true
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run reminder check
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          TODO_BITABLE_APP_TOKEN: ${{ secrets.TODO_BITABLE_APP_TOKEN }}
+          TODO_BITABLE_TABLE_ID: ${{ secrets.TODO_BITABLE_TABLE_ID }}
+          TODO_FEISHU_WEBHOOK_URL: ${{ secrets.TODO_FEISHU_WEBHOOK_URL }}
+          TODO_FEISHU_WEBHOOK_SECRET: ${{ secrets.TODO_FEISHU_WEBHOOK_SECRET }}
+          TODO_TIMEZONE: Asia/Shanghai
+          TODO_UPDATE_AI_STATUS: "1"
+        run: python3 feishu_todo_reminder/scripts/feishu_todo_reminder.py --once
