@@ -187,8 +187,19 @@ class FeishuTodoHandler(BaseHTTPRequestHandler):
             self._send_json(403, {"error": "invalid token"})
             return
 
-        if payload.get("type") == "url_verification" and payload.get("challenge"):
-            self._send_json(200, {"challenge": payload["challenge"]})
+        challenge = (
+            payload.get("challenge")
+            or payload.get("Challenge")
+            or (payload.get("event") or {}).get("challenge")
+            or (payload.get("event") or {}).get("Challenge")
+        )
+        event_type = (
+            payload.get("type")
+            or payload.get("event_type")
+            or (payload.get("header") or {}).get("event_type")
+        )
+        if challenge and event_type in (None, "url_verification"):
+            self._send_json(200, {"challenge": challenge})
             return
 
         if payload.get("encrypt"):
