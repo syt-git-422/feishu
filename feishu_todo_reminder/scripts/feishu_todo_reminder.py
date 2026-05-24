@@ -207,9 +207,9 @@ def send_webhook(text: str):
     return result
 
 
-def send_app_bot_message(token: str, text: str):
-    receive_id_type = os.environ.get("TODO_FEISHU_RECEIVE_ID_TYPE", "chat_id")
-    receive_id = env_required("TODO_FEISHU_RECEIVE_ID")
+def send_app_bot_message(token: str, text: str, receive_id_type=None, receive_id=None):
+    receive_id_type = receive_id_type or os.environ.get("TODO_FEISHU_RECEIVE_ID_TYPE", "chat_id")
+    receive_id = receive_id or env_required("TODO_FEISHU_RECEIVE_ID")
     query = urllib.parse.urlencode({"receive_id_type": receive_id_type})
     url = f"{OPEN_FEISHU_BASE_URL}/im/v1/messages?{query}"
     result = http_json(

@@ -221,3 +221,32 @@ python3 feishu_todo_reminder/scripts/feishu_todo_reminder.py --once
 ```
 
 如果只想看云端效果，直接在 Railway Logs 里观察即可。
+
+## 七、回复“已完成”自动更新
+
+已提供入站服务：
+
+```text
+feishu_todo_reminder/scripts/feishu_todo_inbound_service.py
+```
+
+部署到云服务器后，在飞书开放平台事件订阅中填写公网地址：
+
+```text
+https://你的域名/feishu/todo/events
+```
+
+需要订阅事件：
+
+```text
+im.message.receive_v1
+```
+
+收到文本消息后，服务会处理：
+
+```text
+已完成
+已完成 T-20260522-005
+```
+
+如果没有写任务 ID，服务只会在“今天刚提醒且只有一条未完成任务”时自动完成；如果今天有多条候选任务，会回复让你补充任务 ID，避免误改。
