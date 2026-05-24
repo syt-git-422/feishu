@@ -207,6 +207,32 @@ def send_webhook(text: str):
     return result
 
 
+def send_app_bot_message(token: str, text: str):
+    receive_id_type = os.environ.get("TODO_FEISHU_RECEIVE_ID_TYPE", "chat_id")
+    receive_id = env_required("TODO_FEISHU_RECEIVE_ID")
+    query = urllib.parse.urlencode({"receive_id_type": receive_id_type})
+    url = f"{OPEN_FEISHU_BASE_URL}/im/v1/messages?{query}"
+    result = http_json(
+        "POST",
+        url,
+        headers=feishu_headers(token),
+        payload={
+            "receive_id": receive_id,
+            "msg_type": "text",
+            "content": json.dumps({"text": text}, ensure_ascii=False),
+        },
+    )
+    if result.get("code") != 0:
+        raise RuntimeError(f"Failed to send app bot message: {result}")
+    return result
+
+
+def send_reminder(token: str, text: str):
+    if os.environ.get("TODO_FEISHU_RECEIVE_ID"):
+        return send_app_bot_message(token, text)
+    return send_webhook(text)
+
+
 def text_value(value):
     if value is None:
         return ""
@@ -358,7 +384,7 @@ def run_bitable_once(token: str, current: dt.datetime, app_token: str, table_id:
     for record, reminder_time in bitable_due_records(records, current):
         fields = record.get("fields") or {}
         message = build_message(fields, current)
-        send_webhook(message)
+        send_reminder(token, message)
         updates = {field_last: int(current.timestamp() * 1000)}
         if update_ai_status and field_ai_status in fields:
             updates[field_ai_status] = "已提醒"
@@ -388,7 +414,7 @@ def run_sheet_once(token: str, current: dt.datetime, spreadsheet_token: str) -> 
         header_positions = record.get("header_positions") or {}
         row_number = record["row_number"]
         message = build_message(fields, current)
-        send_webhook(message)
+        send_reminder(token, message)
 
         if field_last in header_positions:
             cell = f"{column_letter(header_positions[field_last])}{row_number}"

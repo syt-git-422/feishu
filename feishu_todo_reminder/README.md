@@ -49,7 +49,7 @@ FEISHU_APP_ID
 FEISHU_APP_SECRET
 ```
 
-并确认应用拥有云文档/电子表格或多维表格的读取、写入权限。实际权限名称以飞书后台显示为准。
+并确认应用拥有云文档/电子表格或多维表格的读取、写入权限，以及机器人发送消息权限。实际权限名称以飞书后台显示为准。
 
 ### 2. 待办清单文档 token
 
@@ -80,7 +80,18 @@ TODO_BITABLE_TABLE_ID=<table_id>
 
 两种方式选一种即可。当前推荐先用 `TODO_WIKI_NODE_TOKEN`。
 
-### 3. 飞书群机器人 webhook
+### 3. 应用机器人接收对象
+
+如果使用飞书应用机器人主动提醒，需要配置接收对象：
+
+```text
+TODO_FEISHU_RECEIVE_ID_TYPE=chat_id
+TODO_FEISHU_RECEIVE_ID=oc_xxx
+```
+
+发到群聊时通常使用 `chat_id`；发给个人时通常使用 `open_id`。机器人需要被加入对应群聊，或具备给对应用户发消息的权限。
+
+### 4. 飞书群机器人 webhook 备用方案
 
 在接收提醒的飞书群里添加自定义机器人，复制 webhook：
 
@@ -118,12 +129,14 @@ Settings -> Secrets and variables -> Actions -> New repository secret
 FEISHU_APP_ID=cli_xxx
 FEISHU_APP_SECRET=xxx
 TODO_WIKI_NODE_TOKEN=xxx
-TODO_FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
+TODO_FEISHU_RECEIVE_ID_TYPE=chat_id
+TODO_FEISHU_RECEIVE_ID=oc_xxx
 ```
 
-如果群机器人开启了签名校验，再添加：
+如果你不用应用机器人，改用群自定义机器人 webhook，则添加：
 
 ```text
+TODO_FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
 TODO_FEISHU_WEBHOOK_SECRET=xxx
 ```
 
@@ -172,13 +185,13 @@ python3 feishu_todo_reminder/scripts/feishu_todo_reminder.py
 FEISHU_APP_ID=cli_xxx
 FEISHU_APP_SECRET=xxx
 TODO_WIKI_NODE_TOKEN=xxx
-TODO_FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
-TODO_FEISHU_WEBHOOK_SECRET=xxx
+TODO_FEISHU_RECEIVE_ID_TYPE=chat_id
+TODO_FEISHU_RECEIVE_ID=oc_xxx
 TODO_TIMEZONE=Asia/Shanghai
 TODO_POLL_INTERVAL_SECONDS=300
 ```
 
-如果群机器人没有开启签名校验，可以不填 `TODO_FEISHU_WEBHOOK_SECRET`。
+如果不用应用机器人，改用群自定义机器人 webhook，则配置 `TODO_FEISHU_WEBHOOK_URL` 和可选的 `TODO_FEISHU_WEBHOOK_SECRET`。
 
 7. 点击 Deploy 或等待 Railway 自动部署。
 8. 打开 Railway Logs，看到类似内容说明 Worker 已经运行：
